@@ -1,7 +1,6 @@
 #include <OLED_I2C.h>
-extern uint8_t SmallFont[];
 extern uint8_t BigNumbers[];
-extern uint8_t TinyFont[];
+extern uint8_t MegaNumbers[];
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -45,9 +44,8 @@ void setup() {
 }
 
 void loop() {
-
     readSensors();
-    updateDisplayValue();
+    updateDisplay();
     controlPump();
     ringHighTempAlarm();
 
@@ -84,20 +82,20 @@ void readSensors() {
     lastSensorsRead = millis();
 }
 
-void updateDisplayValue() {
+void updateDisplay() {
     static unsigned long lastSensorSwitch;
-    static int sensorIndex;
+    static int index;
 
     bool doUpdate = false;
 
-    uint8_t sensorCount = sensors.getDeviceCount();
+    uint8_t count = sensors.getDeviceCount();
 
     if (millis() - lastSensorSwitch > OLED_SENSOR_SWITCH_INTERVAL) {
         lastSensorSwitch = millis();
         doUpdate = true;
-        sensorIndex++;
-        if (sensorIndex >= sensorCount)
-            sensorIndex = 0;
+        index++;
+        if (index >= count)
+            index = 0;
     }
 
     static unsigned long prevSensorsRead;
@@ -108,11 +106,15 @@ void updateDisplayValue() {
 
     if (doUpdate) {
         oled.clrScr();
-        oled.setFont(SmallFont);
-        oled.print("SENSOR " + String(sensorIndex + 1) + "/" + String(sensorCount), CENTER, 0);
-
         oled.setFont(BigNumbers);
-        oled.print(String(sensors.getTempCByIndex(sensorIndex)), CENTER, 20);
+        oled.print(String(index + 1),
+                70,
+                0);
+
+        oled.setFont(MegaNumbers);
+        oled.print(String(sensors.getTempCByIndex(index), 1),
+                CENTER,
+                25);
 
         oled.update();
     }
