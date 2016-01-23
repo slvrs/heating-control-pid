@@ -1,93 +1,145 @@
 #include <OLED_I2C.h>
 extern uint8_t SmallFont[];
-extern uint8_t BigNumbers[]; 
+extern uint8_t BigNumbers[];
 extern uint8_t TinyFont[];
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#define ONE_WIRE_BUS 10
-#define TEMPERATURE_READ_INTERVAL 500
+#include "pump.h"
+
+#define PIN_PUMP 13
+#define ONE_WIRE_BUS 5
+#define TEMPERATURE_READ_INTERVAL 1000
 #define OLED_SENSOR_SWITCH_INTERVAL 9000
 
+#define PIN_ALARM 6
+#define ALARM_TEMPERATURE 85
+#define ALARM_INTERVAL_MIN 250
+#define ALARM_INTERVAL_RANGE 750
 
-#define PUMP 4
+
 
 
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 OLED oled(SDA, SCL);
+Pump pump(PIN_PUMP);
+
+DeviceAddress sens1 =
+    {0x28, 0x16, 0xd1, 0x2f, 0x04, 0x00, 0x00, 0x10};
+DeviceAddress sens2 =
+    {0x28, 0x5D, 0xB0, 0x2F, 0x04, 0x00, 0x00, 0x41};
+
 
 
 unsigned long lastSensorsRead;
 
 
 void setup() {
-  Serial.begin(9600);
-  sensors.begin();
-  oled.begin();
+    Serial.begin(9600);
+    sensors.begin();
+    oled.begin();
+    pump.begin();
+    pinMode(PIN_ALARM, OUTPUT);
 }
 
 void loop() {
-  readSensors();
-  updateDisplayValue();
 
-  
-//  Serial.println(sensors.getDeviceCount());
-//  for (int i = 0; i < sensors.getDeviceCount(); i++) {
-//    Serial.println(sensors.getTempCByIndex(i));
-//  }
-//  Serial.println("Completed");
+    readSensors();
+    updateDisplayValue();
+    controlPump();
+    ringHighTempAlarm();
+
+    delay(1);
+}
+
+void ringHighTempAlarm() {
+    static unsigned long nextWrite = 0;
+    static bool lastState;
+
+    bool doWrite = millis() > nextWrite;
+    if (doWrite) {
+        int x = rand() % ALARM_INTERVAL_RANGE;
+        nextWrite = millis() + ALARM_INTERVAL_MIN + x;
+
+        int t1 = (sensors.getTemp(sens1)>>7);
+        bool doAlarm = t1 >= ALARM_TEMPERATURE;
+
+
+        lastState = doAlarm && !lastState;
+
+        if (lastState)
+            digitalWrite(PIN_ALARM, HIGH);
+        else
+            digitalWrite(PIN_ALARM, LOW);
+    }
 }
 
 void readSensors() {
-  if (millis() - lastSensorsRead < TEMPERATURE_READ_INTERVAL)
-    return;
-  sensors.requestTemperatures();
+    if (millis() - lastSensorsRead < TEMPERATURE_READ_INTERVAL)
+        return;
+    sensors.requestTemperatures();
 
-  lastSensorsRead = millis();
+    lastSensorsRead = millis();
 }
 
 void updateDisplayValue() {
-  static unsigned long lastSensorSwitch;
-  static int sensorIndex;
+    static unsigned long lastSensorSwitch;
+    static int sensorIndex;
 
-  bool doUpdate = false;
+    bool doUpdate = false;
 
-  uint8_t sensorCount = sensors.getDeviceCount(); 
+    uint8_t sensorCount = sensors.getDeviceCount();
 
-  if (millis() - lastSensorSwitch > OLED_SENSOR_SWITCH_INTERVAL) {
-    lastSensorSwitch = millis();
-    doUpdate = true;
-    sensorIndex++;
-    if (sensorIndex >= sensorCount) 
-      sensorIndex = 0;
-  }
+    if (millis() - lastSensorSwitch > OLED_SENSOR_SWITCH_INTERVAL) {
+        lastSensorSwitch = millis();
+        doUpdate = true;
+        sensorIndex++;
+        if (sensorIndex >= sensorCount)
+            sensorIndex = 0;
+    }
 
-  static unsigned long prevSensorsRead;
-  if (prevSensorsRead != lastSensorsRead) {
-    prevSensorsRead = lastSensorsRead;
-    doUpdate = true;
-  }
+    static unsigned long prevSensorsRead;
+    if (prevSensorsRead != lastSensorsRead) {
+        prevSensorsRead = lastSensorsRead;
+        doUpdate = true;
+    }
 
-  if (doUpdate) {
-    oled.clrScr();
-    oled.setFont(SmallFont);
-    oled.print("SENSOR " + String(sensorIndex + 1) + "/" + String(sensorCount), CENTER, 0);
+    if (doUpdate) {
+        oled.clrScr();
+        oled.setFont(SmallFont);
+        oled.print("SENSOR " + String(sensorIndex + 1) + "/" + String(sensorCount), CENTER, 0);
 
-    oled.setFont(BigNumbers);
-    oled.print(String(sensors.getTempCByIndex(sensorIndex)), CENTER, 20);
+        oled.setFont(BigNumbers);
+        oled.print(String(sensors.getTempCByIndex(sensorIndex)), CENTER, 20);
 
-    oled.update();    
+        oled.update();
+    }
 }
 
+void controlPump() {
+    static unsigned long lastWrite = 0;
 
+    if (millis() - lastWrite < 300)
+        return;
 
+    lastWrite = millis();
 
+    bool on = false;
 
+    int t1 = (sensors.getTemp(sens1)>>7);
+    int t2 = (sensors.getTemp(sens2)>>7);
 
+    on = ((t1 - t2) > 15) ||
+        (t1 >= 45);
 
-
-
+    if (on) {
+        if (!pump.getIsOn() && ((millis() - pump.getOffMillis()) > 10000))
+            pump.on();
+    }
+    else
+        if (pump.getIsOn() && ((millis() - pump.getOnMillis()) > 60000))
+            pump.off();
 }
 
