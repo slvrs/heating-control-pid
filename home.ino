@@ -8,8 +8,11 @@ extern uint8_t MegaNumbers[];
 #include "pump.h"
 
 #define PIN_PUMP 13
-#define ONE_WIRE_BUS 5
-#define TEMPERATURE_READ_INTERVAL 1000
+
+#define PIN_ONE_WIRE_BUS 5
+#define TEMPERATURE_READ_INTERVAL 750
+#define TEMPERATURE_RESOLUTION 10
+
 #define OLED_SENSOR_SWITCH_INTERVAL 9000
 
 #define PIN_ALARM 6
@@ -18,9 +21,7 @@ extern uint8_t MegaNumbers[];
 #define ALARM_INTERVAL_RANGE 750
 
 
-
-
-OneWire oneWire(ONE_WIRE_BUS);
+OneWire oneWire(PIN_ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 OLED oled(SDA, SCL);
 Pump pump(PIN_PUMP);
@@ -41,6 +42,9 @@ void setup() {
     oled.begin();
     pump.begin();
     pinMode(PIN_ALARM, OUTPUT);
+
+    sensors.setResolution(TEMPERATURE_RESOLUTION);
+//    sensors.setWaitForConversion(false);
 }
 
 void loop() {
@@ -75,11 +79,14 @@ void ringHighTempAlarm() {
 }
 
 void readSensors() {
-    if (millis() - lastSensorsRead < TEMPERATURE_READ_INTERVAL)
+    static unsigned long nextRead = 0;
+    if (millis() < nextRead)
         return;
     sensors.requestTemperatures();
 
     lastSensorsRead = millis();
+    nextRead = lastSensorsRead + TEMPERATURE_READ_INTERVAL;
+        //max(TEMPERATURE_READ_INTERVAL, 750 >> (12 - TEMPERATURE_RESOLUTION));
 }
 
 void updateDisplay() {
@@ -134,7 +141,7 @@ void controlPump() {
     int t2 = (sensors.getTemp(sens2)>>7);
 
     on = ((t1 - t2) > 15) ||
-        (t1 >= 45);
+        (t1 >= 50);
 
     if (on) {
         if (!pump.getIsOn() && ((millis() - pump.getOffMillis()) > 10000))
