@@ -13,12 +13,15 @@ extern uint8_t MegaNumbers[];
 #define TEMPERATURE_READ_INTERVAL 750
 #define TEMPERATURE_RESOLUTION 10
 
-#define OLED_SENSOR_SWITCH_INTERVAL 9000
+#define OLED_SENSOR_SWITCH_INTERVAL 5000
 
 #define PIN_ALARM 6
 #define ALARM_TEMPERATURE 85
 #define ALARM_INTERVAL_MIN 250
 #define ALARM_INTERVAL_RANGE 750
+
+#define PUMP_ON_TEMP_DIFF 15
+#define PUMP_ON_TEMP_MIN 58
 
 
 OneWire oneWire(PIN_ONE_WIRE_BUS);
@@ -140,8 +143,8 @@ void controlPump() {
     int t1 = (sensors.getTemp(sens1)>>7);
     int t2 = (sensors.getTemp(sens2)>>7);
 
-    on = ((t1 - t2) > 15) ||
-        (t1 >= 50);
+    on = ((t1 - t2) > PUMP_ON_TEMP_DIFF) ||
+        (t1 >= PUMP_ON_TEMP_MIN);
 
     if (on) {
         if (!pump.getIsOn() && ((millis() - pump.getOffMillis()) > 10000))
